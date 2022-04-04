@@ -36,7 +36,7 @@ def open_selection_window():
 
     layout = [
         [sg.Canvas(key='CANVAS')],
-        [sg.Button('Undo', key='UNDO'), sg.Button('Next', key='NEXT'), sg.Button('Change Facies', key='CHANGE'), sg.Button('End', key='END'), sg.VSeparator(), sg.Text('Actual Mode (Select/Delete):'), sg.Button('Select', key='MODE')]
+        [sg.Button('Undo', key='UNDO'), sg.Button('<', key='PREV'), sg.Text('Line Number: ', key='LINE_NUMBER'), sg.Button('>', key='NEXT'), sg.Button('Change Facies', key='CHANGE'), sg.Button('End', key='END'), sg.VSeparator(), sg.Text('Actual Mode (Select/Delete):'), sg.Button('Select', key='MODE')]
     ]
     window = sg.Window('Getting Inputs', layout, element_justification='center', finalize=True, location=(0,0))
     return window
@@ -68,11 +68,11 @@ def draw_figure(canvas, figure):
 
 def load_figure():
     if il_or_xl == 'Inline': #Inline
-        print(f'Actual Inline number: {iline_number}')
-        img = f3_seismic.iline[iline_number]
+        print(f'Actual Inline number: {line_number[il_or_xl]}')
+        img = f3_seismic.iline[line_number[il_or_xl]]
     else: #Crossline
-        print(f'Actual Crossline number: {xline_number}')
-        img = f3_seismic.xline[xline_number]
+        print(f'Actual Crossline number: {line_number[il_or_xl]}')
+        img = f3_seismic.xline[line_number[il_or_xl]]
 
     img = img.T
 
@@ -103,10 +103,8 @@ list_dir = os.listdir(objects_path)
 facies_list = [list_dir[i][:-len(extension)] for i in range(len(list_dir)) if list_dir[i].endswith(extension)]
 facies_list.sort()
 
-iline_number = f3_seismic.ilines[0]
-xline_number = f3_seismic.xlines[0]
-
-il_or_xl = 'Inline'
+line_number = {'Inline': f3_seismic.ilines[0], 'Crossline': f3_seismic.xlines[0]}
+line_step = 50
 
 config_window, selection_window, save_window = open_config_window(facies_list), None, None
 
@@ -125,6 +123,18 @@ while True:
         config_window.hide()
         selection_window = open_selection_window()
 
+        il_or_xl = values['LISTBOX_LINES'][0]
+        facie_to_select = values['LISTBOX_FACIES'][0]
+
     elif events == 'NEXT':
         delete_fig_agg()
+
+        line_number[il_or_xl] += line_step
+        window['LINE_NUMBER'].update(f'Line Number: {line_number[il_or_xl]}')
+
+    elif events == 'PREV':
+        delete_fig_agg()
+
+        line_number[il_or_xl] -= line_step
+        window['LINE_NUMBER'].update(f'Line Number: {line_number[il_or_xl]}')
 
