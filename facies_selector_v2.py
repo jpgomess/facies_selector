@@ -36,7 +36,7 @@ def open_selection_window():
 
     layout = [
         [sg.Canvas(key='CANVAS')],
-        [sg.Button('Undo', key='UNDO'), sg.Button('<', key='PREV'), sg.Text('Line Number: ', key='LINE_NUMBER'), sg.Button('>', key='NEXT'), sg.Button('Change Facies', key='CHANGE'), sg.Button('End', key='END'), sg.VSeparator(), sg.Text('Actual Mode (Select/Delete):'), sg.Button('Select', key='MODE')]
+        [sg.Button('Undo', key='UNDO'), sg.Button('<', key='PREV'), sg.Text(f'Actual Line Number: {line_number[il_or_xl]}', key='LINE_NUMBER'), sg.Button('>', key='NEXT'), sg.Text('Step:'), sg.Input(50, key='STEP', size=5), sg.Button('Change Facies', key='CHANGE'), sg.Button('End', key='END'), sg.VSeparator(), sg.Text(f'Actual Mode (Select/Delete):'), sg.Button('Select', key='MODE')]
     ]
     window = sg.Window('Getting Inputs', layout, element_justification='center', finalize=True, location=(0,0))
     return window
@@ -67,32 +67,86 @@ def draw_figure(canvas, figure):
     return figure_canvas_agg
 
 def load_figure():
-    if il_or_xl == 'Inline': #Inline
-        print(f'Actual Inline number: {line_number[il_or_xl]}')
-        img = f3_seismic.iline[line_number[il_or_xl]]
-    else: #Crossline
-        print(f'Actual Crossline number: {line_number[il_or_xl]}')
-        img = f3_seismic.xline[line_number[il_or_xl]]
+	img = f3_seismic.iline[line_number[il_or_xl]].T if il_or_xl == 'Inline' else f3_seismic.xline[line_number[il_or_xl]].T
 
-    img = img.T
+	fig, ax = plt.subplots(figsize=(10, 10*0.65))
+	ax.imshow(img, cmap='gray_r', aspect='auto', vmin=vmin, vmax=vmax)
 
-    fig, ax = plt.subplots(figsize=(7, 7*0.65))
-    ax.imshow(img, cmap='gray_r', aspect='auto', vmin=vmin, vmax=vmax)
+	canvas = selection_window['CANVAS'].TKCanvas
 
-    canvas = selection_window['CANVAS'].TKCanvas
+	fig_agg = draw_figure(canvas, fig)
 
-    fig_agg = draw_figure(canvas, fig)
-
-    return fig_agg
+	return fig, fig_agg
 
 def delete_fig_agg():
     fig_agg.get_tk_widget().forget()
     plt.close('all')
 
-cube_path = rf"C:\Users\jpgom\Documents\Jão\VS_Code\IC\Seismic_data_w_null.sgy"
+def open_object():
+    file = open(rf'{objects_path}/{facie_to_select}.obj', 'rb')
+    object_file = pickle.load(file)
+    file.close()
+
+    return object_file
+
+def load_points():
+	x = [click['x'] for click in clicks if click[il_or_xl.lower()] == line_number[il_or_xl]]
+	y = [click['y'] for click in clicks if click[il_or_xl.lower()] == line_number[il_or_xl]]
+
+	if facie_to_select == 'Fault':
+	    plt.scatter(x, y, marker='.', linewidth=2, color='r', alpha=0.5)
+	elif facie_to_select == 'Non_Fault':
+	    plt.scatter(x, y, marker='.', linewidth=2, color='g', alpha=0.5)
+	else:
+	    plt.scatter(x, y, marker='.', linewidth=2, color='yellow', alpha=0.5)
+
+	fig.canvas.draw()
+
+def onclick(event):
+	global clicks
+
+	x = int(event.xdata)
+	y = int(event.ydata)
+
+	print(f'Click X: {x} | Click Y: {y}')
+
+	click_dict = {
+		'inline': line_number['Inline'],
+		'crossline': line_number['Crossline'],
+		'x': x,
+		'y': y
+	}
+
+	if actual_mode == 'Select':
+
+		plt.scatter(x, y, marker='.', linewidth=2, color='r', alpha=0.5)
+		fig.canvas.draw()
+
+		clicks += [click_dict]
+	else:
+		df = pd.DataFrame()
+
+		df['inline'] = [click['inline'] for click in clicks]
+		df['crossline'] = [click['crossline'] for click in clicks]
+		df['x'] = [click['x'] for click in clicks]
+		df['y'] = [click['y'] for click in clicks]
+		df['dist'] = np.sqrt((df['x'] - click_dict['x']) ** 2 + (df['y'] - click_dict['y']) ** 2)
+
+		df_sorted = df.sort_values('dist')
+
+		nearest_click = dict(df_sorted.iloc[0,:-1])
+
+		if df_sorted['dist'].to_list()[0] <= 50:    
+		    clicks.remove(nearest_click)
+		    print('Nearest selection removed!')
+		else:
+		    print('There are no selections nearby... Nothing happened...')
+
+#cube_path = r"C:\Users\jpgom\Documents\Jão\VS_Code\IC\Seismic_data_w_null.sgy"
+cube_path = r'/home/gaia/jpedro/Seismic_data_w_null.sgy'
 objects_path = os.getcwd()
 
-actual_mode = 'selector'
+actual_mode = 'Select'
 
 f3_seismic = segyio.open(cube_path)
 vmin = -4000
@@ -103,38 +157,71 @@ list_dir = os.listdir(objects_path)
 facies_list = [list_dir[i][:-len(extension)] for i in range(len(list_dir)) if list_dir[i].endswith(extension)]
 facies_list.sort()
 
-line_number = {'Inline': f3_seismic.ilines[0], 'Crossline': f3_seismic.xlines[0]}
-line_step = 50
+clicks, initial_clicks = None
 
 config_window, selection_window, save_window = open_config_window(facies_list), None, None
 
 while True:
 
-    if selection_window != None:
-        fig_agg = load_figure()
+	if selection_window != None:
+		fig, fig_agg = load_figure()
+		load_points()
+		cid = fig.canvas.mpl_connect('button_press_event', onclick)
 
-    window, events, values = sg.read_all_windows()
+	window, events, values = sg.read_all_windows()
+	
+	if window == config_window:
+		if events == sg.WIN_CLOSED:
+			if clicks == initial_clicks:
+				break
+			else:
+				config_window.hide()
+				save_window = open_save_object_window()
 
-    if events == sg.WIN_CLOSED or events == 'END':
-        window.close()
-        break
+		elif events == 'START':
+			il_or_xl = values['LISTBOX_LINES'][0]
+			facie_to_select = values['LISTBOX_FACIES'][0]
 
-    elif events == 'START':
-        config_window.hide()
-        selection_window = open_selection_window()
+			line_number = {'Inline': f3_seismic.ilines[0], 'Crossline': None} if il_or_xl == 'Inline' else {'Inline': None, 'Crossline': f3_seismic.xlines[0]}
 
-        il_or_xl = values['LISTBOX_LINES'][0]
-        facie_to_select = values['LISTBOX_FACIES'][0]
+			clicks, initial_clicks = open_object(), open_object()
+			
+			config_window.hide()
+			selection_window = open_selection_window()
+		
+	elif window == selection_window:
+		if events == sg.WIN_CLOSED or events == 'END':
+			if clicks == initial_clicks:
+				break
+			else:
+				
+	
+		elif events == 'NEXT':
+			delete_fig_agg()
 
-    elif events == 'NEXT':
-        delete_fig_agg()
+			line_number[il_or_xl] += int(values['STEP'])
 
-        line_number[il_or_xl] += line_step
-        window['LINE_NUMBER'].update(f'Line Number: {line_number[il_or_xl]}')
+			window['LINE_NUMBER'].update(f'Actual Line Number: {line_number[il_or_xl]}')
 
-    elif events == 'PREV':
-        delete_fig_agg()
+		elif events == 'PREV':
+			delete_fig_agg()
 
-        line_number[il_or_xl] -= line_step
-        window['LINE_NUMBER'].update(f'Line Number: {line_number[il_or_xl]}')
+			line_number[il_or_xl] -= int(values['STEP'])
+			window['LINE_NUMBER'].update(f'Actual Line Number: {line_number[il_or_xl]}')
 
+		elif events == 'CHANGE':
+			selection_window.close()
+			config_window.un_hide()
+
+		elif events == 'MODE':
+			delete_fig_agg()
+
+			actual_mode = 'Select' if actual_mode == 'Delete' else 'Delete'
+			window['MODE'].update(actual_mode)
+	
+	elif window == save_window:
+		pass
+
+window.close()
+
+# -- FIM -- #
