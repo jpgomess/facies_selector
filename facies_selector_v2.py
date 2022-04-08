@@ -38,7 +38,7 @@ def open_selection_window():
         [sg.Canvas(key='CANVAS')],
         [sg.Button('Undo', key='UNDO'), sg.Button('<', key='PREV'), sg.Text(f'Actual Line Number: {line_number[il_or_xl]}', key='LINE_NUMBER'), sg.Button('>', key='NEXT'), sg.Text('Step:'), sg.Input(50, key='STEP', size=5), sg.Button('Change Facies', key='CHANGE'), sg.Button('End', key='END'), sg.VSeparator(), sg.Text(f'Actual Mode (Select/Delete):'), sg.Button('Select', key='MODE')]
     ]
-    window = sg.Window('Getting Inputs', layout, element_justification='center', finalize=True, location=(0,0))
+    window = sg.Window('Facies Selector', layout, element_justification='center', finalize=True, location=(0,0))
     return window
 
 def open_save_object_window():
@@ -94,11 +94,11 @@ def load_points():
 	y = [click['y'] for click in clicks if click[il_or_xl.lower()] == line_number[il_or_xl]]
 
 	if facie_to_select == 'Fault':
-	    plt.scatter(x, y, marker='.', linewidth=2, color='r', alpha=0.5)
+		plt.scatter(x, y, marker='.', linewidth=2, color='r', alpha=0.5)
 	elif facie_to_select == 'Non_Fault':
-	    plt.scatter(x, y, marker='.', linewidth=2, color='g', alpha=0.5)
+		plt.scatter(x, y, marker='.', linewidth=2, color='g', alpha=0.5)
 	else:
-	    plt.scatter(x, y, marker='.', linewidth=2, color='yellow', alpha=0.5)
+		plt.scatter(x, y, marker='.', linewidth=2, color='yellow', alpha=0.5)
 
 	fig.canvas.draw()
 
@@ -137,14 +137,14 @@ def onclick(event):
 		nearest_click = dict(df_sorted.iloc[0,:-1])
 
 		if df_sorted['dist'].to_list()[0] <= 50:    
-		    clicks.remove(nearest_click)
-		    print('Nearest selection removed!')
+			clicks.remove(nearest_click)
+			print('Nearest selection removed!')
 		else:
-		    print('There are no selections nearby... Nothing happened...')
+			print('There are no selections nearby... Nothing happened...')
 
-#cube_path = r"C:\Users\jpgom\Documents\Jão\VS_Code\IC\Seismic_data_w_null.sgy"
-cube_path = r'/home/gaia/jpedro/Seismic_data_w_null.sgy'
-objects_path = os.getcwd()
+cube_path = r"C:\Users\jpgom\Documents\Jão\VS_Code\IC\Seismic_data_w_null.sgy"
+#cube_path = r'/home/gaia/jpedro/Seismic_data_w_null.sgy'
+objects_path = r"C:\Users\jpgom\Documents\Jão\git\facies_selector"
 
 actual_mode = 'Select'
 
@@ -157,7 +157,7 @@ list_dir = os.listdir(objects_path)
 facies_list = [list_dir[i][:-len(extension)] for i in range(len(list_dir)) if list_dir[i].endswith(extension)]
 facies_list.sort()
 
-clicks, initial_clicks = None
+clicks, initial_clicks = None, None
 
 config_window, selection_window, save_window = open_config_window(facies_list), None, None
 
@@ -194,7 +194,7 @@ while True:
 			if clicks == initial_clicks:
 				break
 			else:
-				
+				pass
 	
 		elif events == 'NEXT':
 			delete_fig_agg()
