@@ -106,8 +106,7 @@ def open_object():
 
 def create_objects():
 	path_to_save = values['INPUT']
-	if not path_to_save.endswith('.obj'):
-		path_to_save += '.obj'
+	path_to_save += '.obj' if not path_to_save.endswith('.obj') else path_to_save
 
 	file_inputs = open(path_to_save, 'wb')
 	pickle.dump(object, file_inputs)
