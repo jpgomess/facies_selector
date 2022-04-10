@@ -1,5 +1,6 @@
 # -- INÍCIO -- #
 
+from importlib.resources import path
 from PySimpleGUI.PySimpleGUI import read_all_windows
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.widgets import Cursor
@@ -46,7 +47,8 @@ def open_save_object_window():
     height = 150
 
     layout = [
-        [sg.Button('Update Object', key='UPDATE'), sg.Button('Create Object', key='CREATE')]
+        [sg.Button('Update Object', key='UPDATE')],
+		[sg.FileSaveAs(), sg.Input(enable_events=True, key='INPUT')]
     ]
 
     window = sg.Window(
@@ -76,18 +78,11 @@ def load_figure():
 
 	fig_agg = draw_figure(canvas, fig)
 
-	return fig, fig_agg
+	return fig, ax, fig_agg
 
 def delete_fig_agg():
     fig_agg.get_tk_widget().forget()
     plt.close('all')
-
-def open_object():
-    file = open(rf'{objects_path}/{facie_to_select}.obj', 'rb')
-    object_file = pickle.load(file)
-    file.close()
-
-    return object_file
 
 def load_points():
 	x = [click['x'] for click in clicks if click[il_or_xl.lower()] == line_number[il_or_xl]]
@@ -101,6 +96,25 @@ def load_points():
 		plt.scatter(x, y, marker='.', linewidth=2, color='yellow', alpha=0.5)
 
 	fig.canvas.draw()
+
+def open_object():
+    file = open(rf'{objects_path}/{facie_to_select}.obj', 'rb')
+    object_file = pickle.load(file)
+    file.close()
+
+    return object_file
+
+def create_objects():
+	path_to_save = values['INPUT']
+	if not path_to_save.endswith('.obj'):
+		path_to_save += '.obj'
+
+	file_inputs = open(path_to_save, 'wb')
+	pickle.dump(object, file_inputs)
+	file_inputs.close()
+
+	print(f'{facie_to_select}.obj successfully created!')
+	print('='*40)
 
 def onclick(event):
 	global clicks
@@ -142,6 +156,48 @@ def onclick(event):
 		else:
 			print('There are no selections nearby... Nothing happened...')
 
+def zoom_factory(ax, base_scale = 2.):
+    def zoom_fun(event):
+    
+        # get the current x and y limits
+        cur_xmin = ax.get_xlim()[0]
+        cur_xmax = ax.get_xlim()[1]
+        cur_ymin = ax.get_ylim()[0]
+        cur_ymax = ax.get_ylim()[1]
+        
+        xdata = event.xdata # get event x location
+        ydata = event.ydata # get event y location
+        
+        cur_xrange_right = abs(cur_xmax - xdata)
+        cur_xrange_left = abs(cur_xmin - xdata)
+        cur_yrange_up = abs(cur_ymax - ydata)
+        cur_yrange_down = abs(cur_ymin - ydata)
+        
+        if event.button == 'up':
+            # deal with zoom in
+            scale_factor = 1/base_scale
+        elif event.button == 'down':
+            # deal with zoom out
+            scale_factor = base_scale
+        else:
+            # deal with something that should never happen
+            scale_factor = 1
+            print(event.button)
+            
+        # set new limits
+        ax.set_xlim([xdata - cur_xrange_left * scale_factor,
+                     xdata + cur_xrange_right * scale_factor])
+        ax.set_ylim([ydata + cur_yrange_down * scale_factor,
+                     ydata - cur_yrange_up * scale_factor])
+        plt.draw() # force re-draw
+
+    fig = ax.get_figure() # get the figure of interest
+    # attach the call back
+    fig.canvas.mpl_connect('scroll_event',zoom_fun)
+
+    #return the function
+    return zoom_fun
+
 cube_path = r"C:\Users\jpgom\Documents\Jão\VS_Code\IC\Seismic_data_w_null.sgy"
 #cube_path = r'/home/gaia/jpedro/Seismic_data_w_null.sgy'
 objects_path = r"C:\Users\jpgom\Documents\Jão\git\facies_selector"
@@ -164,12 +220,15 @@ config_window, selection_window, save_window = open_config_window(facies_list), 
 while True:
 
 	if selection_window != None:
-		fig, fig_agg = load_figure()
+		fig, ax, fig_agg = load_figure()
 		load_points()
 		cid = fig.canvas.mpl_connect('button_press_event', onclick)
+		zoom = zoom_factory(ax, base_scale = 1.2)
 
 	window, events, values = sg.read_all_windows()
 	
+	# EVENT LOOPS
+
 	if window == config_window:
 		if events == sg.WIN_CLOSED:
 			if clicks == initial_clicks:
@@ -194,7 +253,8 @@ while True:
 			if clicks == initial_clicks:
 				break
 			else:
-				pass
+				selection_window.hide()
+				save_window = open_save_object_window()
 	
 		elif events == 'NEXT':
 			delete_fig_agg()
@@ -213,14 +273,18 @@ while True:
 			selection_window.close()
 			config_window.un_hide()
 
-		elif events == 'MODE':
+		elif events == 'MODE' or keyboard.is_pressed('m'):
 			delete_fig_agg()
 
 			actual_mode = 'Select' if actual_mode == 'Delete' else 'Delete'
 			window['MODE'].update(actual_mode)
 	
 	elif window == save_window:
-		pass
+		if events == sg.WIN_CLOSED:
+			break
+
+		elif events == 'INPUT':
+			print(values)
 
 window.close()
 
