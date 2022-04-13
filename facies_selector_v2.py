@@ -13,7 +13,14 @@ import pickle
 import segyio
 import os
 
-def open_config_window(facies_list):
+def get_facies_list(extension):
+	list_dir = os.listdir(objects_path)
+	facies_list = [list_dir[i][:-len(extension)] for i in range(len(list_dir)) if list_dir[i].endswith(extension)]
+	facies_list.sort()
+	
+	return facies_list
+
+def open_config_window():
     width = 300
     height = 250
     layout = [
@@ -42,13 +49,13 @@ def open_selection_window():
     window = sg.Window('Facies Selector', layout, element_justification='center', finalize=True, location=(0,0))
     return window
 
-def open_save_object_window():
+def open_save_window():
     width = 300
     height = 150
 
     layout = [
-        [sg.Button('Update Object', key='UPDATE')],
-		[sg.FileSaveAs(), sg.Input(enable_events=True, key='INPUT')]
+        [sg.Text('Save Changes?')],
+        [sg.Button('Yes', key='SAVE'), sg.Button('No', key='NOT_SAVE')]
     ]
 
     window = sg.Window(
@@ -61,6 +68,20 @@ def open_save_object_window():
         )
 
     return window
+    
+def save_window_loop():
+	save_window = open_save_window()
+	while True:
+		window, events, values = sg.read_all_windows()
+		
+		if events == sg.WIN_CLOSED or events == 'NOT_SAVE':
+			break
+
+		elif events == 'SAVE':
+			create_object()
+			break
+			
+	save_window.close()
 
 def draw_figure(canvas, figure):
     figure_canvas_agg = FigureCanvasTkAgg(figure, canvas)
@@ -71,7 +92,7 @@ def draw_figure(canvas, figure):
 def load_figure():
 	img = f3_seismic.iline[line_number[il_or_xl]].T if il_or_xl == 'Inline' else f3_seismic.xline[line_number[il_or_xl]].T
 
-	fig, ax = plt.subplots(figsize=(10, 10*0.65))
+	fig, ax = plt.subplots(figsize=(7, 7*0.65))
 	ax.imshow(img, cmap='gray_r', aspect='auto', vmin=vmin, vmax=vmax)
 
 	canvas = selection_window['CANVAS'].TKCanvas
@@ -98,19 +119,17 @@ def load_points():
 	fig.canvas.draw()
 
 def open_object():
-    file = open(rf'{objects_path}/{facie_to_select}.obj', 'rb')
-    object_file = pickle.load(file)
-    file.close()
+	file = open(rf'{objects_path}/{facie_to_select}.obj', 'rb')
+	object_file = pickle.load(file)
+	file.close()
 
-    return object_file
+	return object_file
 
-def create_objects():
-	path_to_save = values['INPUT']
-	path_to_save += '.obj' if not path_to_save.endswith('.obj') else path_to_save
-
-	file_inputs = open(path_to_save, 'wb')
-	pickle.dump(object, file_inputs)
-	file_inputs.close()
+def create_object():
+	
+	file = open(f'{objects_path}/{facie_to_select}.obj', 'wb')
+	pickle.dump(clicks, file)
+	file.close()
 
 	print(f'{facie_to_select}.obj successfully created!')
 	print('='*40)
@@ -197,9 +216,13 @@ def zoom_factory(ax, base_scale = 2.):
     #return the function
     return zoom_fun
 
-cube_path = r"C:\Users\jpgom\Documents\Jão\VS_Code\IC\Seismic_data_w_null.sgy"
+#cube_path = r"C:\Users\jpgom\Documents\Jão\VS_Code\IC\Seismic_data_w_null.sgy"
 #cube_path = r'/home/gaia/jpedro/Seismic_data_w_null.sgy'
-objects_path = r"C:\Users\jpgom\Documents\Jão\git\facies_selector"
+cube_path = '/mnt/hgfs/shared_folder/Seismic_data_w_null.sgy'
+
+#objects_path = r"C:\Users\jpgom\Documents\Jão\git\facies_selector"
+#objects_path = r"C:\Users\jpgom\Documents\Jão\git\facies_selector"
+objects_path = r"/home/jpgomess/code/git/facies_selector"
 
 actual_mode = 'Select'
 
@@ -207,14 +230,11 @@ f3_seismic = segyio.open(cube_path)
 vmin = -4000
 vmax = 4000
 
-extension = '.obj'
-list_dir = os.listdir(objects_path)
-facies_list = [list_dir[i][:-len(extension)] for i in range(len(list_dir)) if list_dir[i].endswith(extension)]
-facies_list.sort()
+facies_list = get_facies_list(extension='.obj')
 
-clicks, initial_clicks = None, None
+clicks = initial_clicks = []
 
-config_window, selection_window, save_window = open_config_window(facies_list), None, None
+config_window, selection_window, save_window = open_config_window(), None, None
 
 while True:
 
@@ -229,16 +249,16 @@ while True:
 	# EVENT LOOPS
 
 	if window == config_window:
-		if events == sg.WIN_CLOSED:
-			if clicks == initial_clicks:
-				break
-			else:
-				config_window.hide()
-				save_window = open_save_object_window()
+		if events == sg.WIN_CLOSED or events == 'END':
+			break
 
 		elif events == 'START':
 			il_or_xl = values['LISTBOX_LINES'][0]
-			facie_to_select = values['LISTBOX_FACIES'][0]
+			
+			facie_to_select = values['LISTBOX_FACIES'][0] if values['INPUT_FACIE'] == '' else values['INPUT_FACIE']
+			print(facie_to_select)
+			if facie_to_select not in facies_list:
+				create_object()
 
 			line_number = {'Inline': f3_seismic.ilines[0], 'Crossline': None} if il_or_xl == 'Inline' else {'Inline': None, 'Crossline': f3_seismic.xlines[0]}
 
@@ -253,7 +273,18 @@ while True:
 				break
 			else:
 				selection_window.hide()
-				save_window = open_save_object_window()
+				save_window_loop()
+				break
+				
+		elif events == 'UNDO':
+			delete_fig_agg()
+			
+			if len(initial_clicks) > 0:
+				initial_clicks.pop(-1)
+			if len(clicks) > 0:
+				clicks.pop(-1)
+			else:
+				print('Object is already empty...')
 	
 		elif events == 'NEXT':
 			delete_fig_agg()
@@ -269,21 +300,23 @@ while True:
 			window['LINE_NUMBER'].update(f'Actual Line Number: {line_number[il_or_xl]}')
 
 		elif events == 'CHANGE':
-			selection_window.close()
-			config_window.un_hide()
+			selection_window.hide()
+			selection_window = None
+			
+			facies_list = get_facies_list(extension='.obj')
+			
+			if clicks != initial_clicks:
+				save_window_loop()
+				
+			clicks = initial_clicks = []
+				
+			config_window = open_config_window()
 
-		elif events == 'MODE' or keyboard.is_pressed('m'):
+		elif events == 'MODE':
 			delete_fig_agg()
 
 			actual_mode = 'Select' if actual_mode == 'Delete' else 'Delete'
 			window['MODE'].update(actual_mode)
-	
-	elif window == save_window:
-		if events == sg.WIN_CLOSED:
-			break
-
-		elif events == 'INPUT':
-			print(values)
 
 window.close()
 
